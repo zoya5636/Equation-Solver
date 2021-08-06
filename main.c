@@ -19,7 +19,7 @@ int solve(char var, int *inputSize1, int *inputSize2, int *numSize1, int *numSiz
 void displayResult(int inputSize, int numSize, double *numArr, char *charArr, char var);
 int errorCheck(char *input, int *inputSize, char var);
 int numInChar(char *arr, int index, int inputSize);
-void shiftArray(char *input1, double *input2, int *inputSize, int index);
+void shiftArray(char *input1, double *input2, int *inputSize, int index, int a, char b);
 
 const int ALPHA = 1;
 const int NUM = 2;
@@ -74,7 +74,7 @@ int elementInArr(char oType, char *arr, int index) {
     else if(oType == '-' || oType == '+') end = 3;
     for(int i = 0; i < end; i++) {
         if(arr[index] == operations[i][0]) return 0;
-        printf("&&&&&&&&&&&&&&&&&&&&     ARR[INDEX] = %d, OPERATIONS[I] = %d\n", arr[index], operations[i][0]);
+        if(DEBUG == 1) printf("&&&&&&&&&&&&&&&&&&&&     ARR[INDEX] = %d, OPERATIONS[I] = %d\n", arr[index], operations[i][0]);
     }
     return 1;
 }
@@ -129,16 +129,15 @@ void operate(char oType, double *numArr, char *charArr, int *inputSize, int *num
             } else if(oType == '^' && charArr[i-1] == '$' && charArr[i+1] == '$') {
                 result = pow(numArr[numCount], numArr[index]);
             }
-            /*shiftArray(charArr, NULL, inputSize, i);
-            shiftArray(charArr, NULL, inputSize, cIndex1-1);
-            numArr[numCount+1] = result;
-            shiftArray(NULL, numArr, numSize, numCount);
-            numCount++;*/
+            shiftArray(charArr, NULL, inputSize, i, 0, 0);
+            shiftArray(charArr, NULL, inputSize, cIndex1-1, 0, 0);
+            numArr[index] = result;
+            shiftArray(NULL, numArr, numSize, numCount, 0, 0);
             
-            charArr[i] = '@';
+            /*charArr[i] = '@';
             charArr[cIndex1-1] = '@';
             numArr[index] = result;
-            numArr[numCount] = 0;
+            numArr[numCount] = 0;*/
             //numCount = index;
         }
     }
@@ -177,8 +176,14 @@ void convert(char input[INPUT_MAX], int *numSize1, int *numSize2, int *inputSize
     double *currNumArr = leftNumArr;
     char *currCharArr = leftCharArr;
     if(input[0] == '-') {
-        negNum = 1;
-        signs++;
+        if(charType(input, 1) == NUM) {
+            negNum = 1;
+            signs++;
+        } else if(charType(input, 1) == ALPHA) {
+            currCharArr[charCount++] = '$';
+            currCharArr[charCount++] = '*';
+            currNumArr[numCount++] = -1;
+        }
     }
     for(int i = 0; i < size; i++) {
         if(input[i] == '=') {
@@ -190,8 +195,14 @@ void convert(char input[INPUT_MAX], int *numSize1, int *numSize2, int *inputSize
             signs = 0;
             currSize = inputSize2;
             if(input[i+1] == '-') {
-                negNum = 1;
-                signs++;
+                if(charType(input, i+2) == NUM) {
+                    negNum = 1;
+                    signs++;
+                } else if(charType(input, i+2) == ALPHA) {
+                    currCharArr[charCount++] = '$';
+                    currCharArr[charCount++] = '*';
+                    currNumArr[numCount++] = -1;
+                }
             }
             continue;
         }
@@ -212,18 +223,18 @@ void convert(char input[INPUT_MAX], int *numSize1, int *numSize2, int *inputSize
                 currNum = input[i] - 48;
             }
         } else if(currState == OPERATION) {
-            if(i != 0 && charType(input, i-1) == OPEN_BRACKET && charType(input, i+1) == NUM) {
+            if( i!=0 && charType(input, i-1) == OPEN_BRACKET && charType(input, i+1) == NUM) {
                 brackNum = 1;
                 if(input[i] == '-') {
                     negNum = 1;
                     signs++;
                 }
-            } else if(brackNum == 0 && negNum == 0) {
+            } else if(brackNum == 0 && negNum == 0 && ( (i!=0 && input[i-1] != '=') || charType(input, i+1) != ALPHA ) ) {
                 currCharArr[charCount] = input[i];
                 charCount++;
             }
         } else if(currState == OPEN_BRACKET) {
-            if(i != 0 && charType(input, i-1) != OPERATION && charType(input, i+1) != OPERATION) {
+            if( (i != 0 && input[i-1] != '=') && charType(input, i-1) != OPERATION) {
                 currCharArr[charCount] = '*';
                 charCount++;
             }
@@ -303,66 +314,86 @@ void addElement(double *numArr, char *charArr, int *size, double nElement, char 
     }
 }
 
-// returns 1 if var has switched sides
+// may have to change i when size is adjusted!
+// returns 1 if variable side has changed
 int move(double *numArr, double *oNumArr, char *charArr, char *oCharArr, int *numSize, int *oNumSize,
           int *inputSize, int *oInputSize, char var, char oType, char opposite) {
-    int numCount = -1, index;
+    int numCount = -1, nIndex, cIndex, check1=0, check2=0;
     double moveNum;
     char moveChar;
+    if(DEBUG == 1) printArr(*numSize, *oNumSize, *inputSize, *oInputSize, numArr, oNumArr, charArr, oCharArr);
     for(int i = 0; i < (*inputSize); i++) {
         if(charArr[i] == '$') numCount++;
-        if(charArr[i] == oType) {
-            if(oType != '^' && (charArr[i+1] == '$' || (charArr[i-1] == '$' && (oType == '+' || oType == '*')))) {
-                index = findNextNum(numCount, (*numSize), numArr);
-                if(charArr[i+1] == '$') {
-                    index = findNextNum(numCount, (*numSize), numArr);
-                    moveNum = numArr[index];
-                    numArr[index] = 0;
-                    charArr[i+1] = '@';
-                } else {
-                    index = findNextNum(numCount-1, (*numSize), numArr);
-                    moveNum = numArr[index];
-                    numArr[index] = 0;
-                    charArr[i-1] = '@';
+        if(charType(charArr, 0) == OPERATION && charArr[1] == '$') {
+            if(charArr[0] == '-') numArr[0] *= (-1);
+            shiftArray(charArr, NULL, inputSize, 0, 0, 0);
+            continue;
+        } else if(oType == '+' && charArr[0] == '$' && charArr[1] == '-') {
+            moveNum = numArr[0];
+            shiftArray(NULL, numArr, numSize, 0, 0, 0);
+            shiftArray(charArr, NULL, inputSize, 0, 0, 0);
+            addElement(oNumArr, NULL, oNumSize, moveNum, 0);
+            addElement(NULL, oCharArr, oInputSize, 0, opposite);
+            addElement(NULL, oCharArr, oInputSize, 0, '$');
+            continue;
+        } else if(charArr[0] == '-' && charType(charArr, 1) == ALPHA) {
+            shiftArray(charArr, NULL, inputSize, 0, 0, '*');
+            shiftArray(charArr, NULL, inputSize, 0, 0, '$');
+            if(DEBUG == 1) {
+                printf("MADE IT ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n");
+                printArr(*numSize, *oNumSize, *inputSize, *oInputSize, numArr, oNumArr, charArr, oCharArr);
+            }
+        }
+        if(i!=0 && charArr[i-1] == oType) {
+            check1 = elementInArr(oType, charArr, i+1);
+            check2 = elementInArr(oType, charArr, i-3);
+            if(oType != '^' && ( (charArr[i] == '$' &&  ((i == (*inputSize)-1) || check1 == 1)) ||
+              (charArr[i-2] == '$' && (check2 == 1 || i <= 2) && (oType == '+' || oType == '*')) )) {
+                if(charArr[i] == '$' && check1 == 1) {
+                    cIndex = i;
+                    nIndex = numCount;
+                } else if(check2 == 1){
+                    cIndex = (i-2);
+                    nIndex = numCount;
+                    if(charArr[i] == '$') nIndex -= 1;
                 }
-                //shiftArray(charArr, NULL, inputSize, i);
-                charArr[i] = '@';
-                /*for(int i = 0; i < 10; i++) {
-                    printf("char: %c  oChar: %c\n", charArr[i], oCharArr[i]);
-                }*/
+                moveNum = numArr[nIndex];
+                shiftArray(charArr, NULL, inputSize, i-1, 0, 0);
+                shiftArray(NULL, numArr, numSize, nIndex, 0, 0);
+                shiftArray(charArr, NULL, inputSize, cIndex, 0, 0);
                 addElement(oNumArr, NULL, oNumSize, moveNum, 0);
                 addElement(NULL, oCharArr, oInputSize, 0, opposite);
                 addElement(NULL, oCharArr, oInputSize, 0, '$');
-                printf("PRINTING/n");
-                printArr(10, 10, 10, 10, numArr, oNumArr, charArr, oCharArr);
-            } else if(oType != '^' && ((charType(charArr, i+1) == ALPHA && charArr[i+1] != var) ||
-                       (charArr[i+1] == var && (oType == '/' || oType == '-'))) ) {
-                moveChar = charArr[i+1];
-                //shiftArray(charArr, NULL, inputSize, i);
-                //shiftArray(charArr, NULL, inputSize, i+1);
-                charArr[i] = '@';
-                charArr[i+1] = '@';
+            } else if(oType != '^' && ((charType(charArr, i) == ALPHA && charArr[i] != var) ||
+                     (charArr[i] == var && (oType == '/' || oType == '-')))) {
+                if(DEBUG == 1) printArr(*numSize, *oNumSize, *inputSize, *oInputSize, numArr, oNumArr, charArr, oCharArr);
+                moveChar = charArr[i];
+                shiftArray(charArr, NULL, inputSize, i, 0, 0);
+                shiftArray(charArr, NULL, inputSize, i-1, 0, 0);
                 addElement(NULL, oCharArr, oInputSize, 0, opposite);
                 addElement(NULL, oCharArr, oInputSize, 0, moveChar);
-                return 1;
-            } else if(i != ((*inputSize)-1) && oType == '^' && charArr[i+1] == '$') {
-                moveChar = '^';
-                //shiftArray(charArr, NULL, inputSize, i);
-                //shiftArray(charArr, NULL, inputSize, i+1);
-                charArr[i] = '@';
-                charArr[i+1] = '@';
-                index = findNextNum(numCount, (*numSize), numArr);
-                double num = numArr[index];
+                if(DEBUG == 1) printf("PRINTING ARRAYS BEFORE MOVING\n");
+                if(DEBUG == 1) printArr(*numSize, *oNumSize, *inputSize, *oInputSize, numArr, oNumArr, charArr, oCharArr);
+                if(charArr[i] == var){
+                    if(DEBUG == 1) printf("oType = %c ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n", oType);
+                    if(DEBUG == 1) printArr(10, 10, 10, 10, numArr, oNumArr, charArr, oCharArr);
+                    return 1;
+                }
+            } else if(oType == '^' && charArr[i] == '$') {
+                shiftArray(charArr, NULL, inputSize, i, 0, 0);
+                double num = numArr[numCount];
                 if(DEBUG == 1) printf("---------------------%lf, %lf\n", 1.0 / num, num);
                 moveNum = (1.0 / num);
                 if(DEBUG == 1) printf("!!!!!!!!!!!!!!!!!!!!!!!!1moveNum = %lf\n", moveNum);
-                numArr[index] = 0;
+                shiftArray(NULL, numArr, numSize, numCount, 0, 0);
                 addElement(oNumArr, NULL, oNumSize, moveNum, 0);
                 addElement(NULL, oCharArr, oInputSize, 0, opposite);
                 addElement(NULL, oCharArr, oInputSize, 0, '$');
             }
         }
     }
+    if(DEBUG == 1) printf("oType = %c ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n", oType);
+    if(DEBUG == 1) printArr(*numSize, *oNumSize, *inputSize, *oInputSize, numArr, oNumArr, charArr, oCharArr);
     return 0;
 }
 // 5-a=10
@@ -424,38 +455,59 @@ void displayResult(int inputSize, int numSize, double *numArr, char *charArr, ch
     printf("\n");
 }
 
-void shiftArray(char *input1, double *input2, int *inputSize, int index) {
-    int done = 0;
-    (*inputSize)--;
+void shiftArray(char *input1, double *input2, int *inputSize, int index, int nElement, char cElement) {
+    int done = 0, delta;
+    if(cElement == 0 && nElement == 0){
+        (*inputSize)--;
+    }
+    else{
+        (*inputSize)++;
+    }
     if(input1 == NULL) {
         double *temp = input2;
         for(int i = 0; i < (*inputSize); i++) {
-            if(i == index) done = 1;
+            if(i == index) {
+                done = 1;
+                if(nElement != 0) {
+                    delta = -1;
+                } else {
+                    delta = 1;
+                }
+            }
             if(done == 0) {
                 input2[i] = temp[i];
             } else {
-                input2[i] = temp[i+1];
+                input2[i] = temp[i+delta];
             }
         }
     }
     else {
         char *temp = input1;
         for(int i = 0; i < (*inputSize); i++) {
-            if(i == index) done = 1;
+            if(i == index) {
+                done = 1;
+                if(cElement != 0) {
+                    delta = -1;
+                } else {
+                    delta = 1;
+                }
+            }
             if(done == 0) {
                 input1[i] = temp[i];
             } else {
-                input1[i] = temp[i+1];
+                input1[i] = temp[i+delta];
             }
         }
     }
     // debugging
-    printf("###################### PRINTING SHIFTED ARRAY\n");
-    for(int i = 0; i < (*inputSize); i++) {
-        if(input1==NULL) printf("%lf\n", input2[i]);
-        else printf("%c\n", input1[i]);
+    if(DEBUG == 1) {
+        printf("###################### PRINTING SHIFTED ARRAY\n");
+        for(int i = 0; i < (*inputSize); i++) {
+            if(input1 == NULL) printf("%lf\n", input2[i]);
+            else printf("%c\n", input1[i]);
+        }
+        printf("inputSize = %d\n", (*inputSize));
     }
-    printf("inputSize = %d\n", (*inputSize));
 }
 // returns 1 if error found in equation, 0 if not
 /* error checking for:
@@ -473,7 +525,7 @@ int errorCheck(char *input, int *inputSize, char var) {
     for(int i = 0; i < size; i++) {
         if(var == '=') {
             if(input[i] == ' ' && (*inputSize) != 0) {
-                shiftArray(input, NULL, inputSize, i);
+                shiftArray(input, NULL, inputSize, i, 0, 0);
                 i = 0;
             } else if(charType(input, i) == 0 && input[i] != 32) {
                 printf("%c is not a valid character.\n", input[i]);

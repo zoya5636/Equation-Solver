@@ -8,8 +8,8 @@
 int charType(char equation[INPUT_MAX], int index);
 void convert(char input[INPUT_MAX], int *numSize1, int *numSize2, int *inputSize1, int *inputSize2, 
              double *numAr1, double *numAr2, char *cAr1, char *cAr2);
-void operate(char oType, double *numArr, char *charArr, int *inputSize, int *numSize, int order);
-void simplify(int *inputSize1, int *inputSize2, int *numSize1, int *numSize2, double *leftNumArr, double *rightNumArr,
+int operate(char oType, double *numArr, char *charArr, int *inputSize, int *numSize, int order);
+int simplify(int *inputSize1, int *inputSize2, int *numSize1, int *numSize2, double *leftNumArr, double *rightNumArr,
               char *leftCharArr, char *rightCharArr, int start);
 int findNextNum(int numCount, int numSize, double *numArr);
 int move(double *numArr, double *oNumArr, char *charArr, char *oCharArr, int *numSize, int *oNumSize,
@@ -20,6 +20,7 @@ void displayResult(int inputSize, int numSize, double *numArr, char *charArr, ch
 int errorCheck(char *input, int *inputSize, char var);
 int numInChar(char *arr, int index, int inputSize);
 void shiftArray(char *input1, double *input2, int *inputSize, int index, int a, char b);
+int notSolvable(double num1, char oType, double num2);
 
 const int ALPHA = 1;
 const int NUM = 2;
@@ -29,10 +30,10 @@ const int CLOSED_BRACKET = 5;
 const int EQUAL_SIGN = 6;
 const int EXPONENT = 7;
 
-const int DEBUG = 1;
-int OPER_NUM = 5;
+const int DEBUG = 0;
+#define OPER_NUM 5
 
-char operations[5][2] = {
+char operations[OPER_NUM][2] = {
     {'^', '^'},
     {'/', '*'},
     {'*', '/'},
@@ -105,34 +106,40 @@ int validOperation(char *arr, int index1, int index2, int inputSize, char oType,
 
 //$ + a + $
 
-void operate(char oType, double *numArr, char *charArr, int *inputSize, int *numSize, int order) {
-    int numCount = -1;
+int operate(char oType, double *numArr, char *charArr, int *inputSize, int *numSize, int order) {
+    int numCount = -1, size = (*inputSize);
     double result;
-    for(int i = 0; i < (*inputSize); i++) {
+    for(int i = 0; i < size; i++) {
         if(charArr[i] == '$') numCount++;
-        if(numCount == (*numSize)) break;
-        if(charArr[i] == oType) {
-            int index = findNextNum(numCount, (*numSize), numArr);
-            if(index == -1 || index == 0) return;
-            int cIndex1 = numInChar(charArr, index, *inputSize);
-            int cIndex2 = numInChar(charArr, numCount, *inputSize);
-            int valid = validOperation(charArr, numCount, index, (*inputSize), oType, order);
-            if(valid == -1) return;
-            if(oType == '+') {
-                result = numArr[numCount] + numArr[index];
-            } else if(oType == '-') {
-                result = numArr[numCount] - numArr[index];
-            } else if(oType == '*') {
-                result = numArr[numCount] * numArr[index];
-            } else if(oType == '/') {
-                result = numArr[numCount] / numArr[index];
-            } else if(oType == '^' && charArr[i-1] == '$' && charArr[i+1] == '$') {
-                result = pow(numArr[numCount], numArr[index]);
+        if(numCount == (*numSize)) return 0;
+        if(charArr[i] == oType && numCount != -1) {
+            //int index = findNextNum(numCount, (*numSize), numArr);
+            int index = numCount+1;
+            if(index != (*numSize)) {
+                int cIndex1 = numInChar(charArr, index, *inputSize);
+                int cIndex2 = numInChar(charArr, numCount, *inputSize);
+                int valid = validOperation(charArr, numCount, index, (*inputSize), oType, order);
+                if(valid != -1) {
+                    if(notSolvable(numArr[numCount], oType, numArr[index]) == 1) return 1;
+                    if(oType == '+') {
+                       result = numArr[numCount] + numArr[index];
+                    } else if(oType == '-') {
+                        result = numArr[numCount] - numArr[index];
+                    } else if(oType == '*') {
+                        result = numArr[numCount] * numArr[index];
+                    } else if(oType == '/') {
+                        result = numArr[numCount] / numArr[index];
+                    } else if(oType == '^' && charArr[i-1] == '$' && charArr[i+1] == '$') {
+                        result = pow(numArr[numCount], numArr[index]);
+                    }
+                    shiftArray(charArr, NULL, inputSize, i, 0, 0);
+                    shiftArray(charArr, NULL, inputSize, cIndex1-1, 0, 0);
+                    numArr[index] = result;
+                    shiftArray(NULL, numArr, numSize, numCount, 0, 0);
+                    i = 0; // new
+                    numCount = 0;
+                }
             }
-            shiftArray(charArr, NULL, inputSize, i, 0, 0);
-            shiftArray(charArr, NULL, inputSize, cIndex1-1, 0, 0);
-            numArr[index] = result;
-            shiftArray(NULL, numArr, numSize, numCount, 0, 0);
             
             /*charArr[i] = '@';
             charArr[cIndex1-1] = '@';
@@ -141,6 +148,7 @@ void operate(char oType, double *numArr, char *charArr, int *inputSize, int *num
             //numCount = index;
         }
     }
+    return 0;
 }
 
 // returns 0 if any other type
@@ -150,7 +158,7 @@ int charType(char equation[INPUT_MAX], int index) {
         return ALPHA;   
     } else if(equation[index] <= 57 && equation[index] >= 48) {
         return NUM;
-    } else if(equation[index] == 43 || equation[index] == 42 || equation[index] == 45 || equation[index] == 47) {
+    } else if(equation[index] == 43 || equation[index] == 42 || equation[index] == 45 || equation[index] == 47 || equation[index] == '^') {
         return OPERATION;
     } else if(equation[index] == 40 || equation[index] == 91 || equation[index] == 123) {
         return OPEN_BRACKET;
@@ -229,21 +237,28 @@ void convert(char input[INPUT_MAX], int *numSize1, int *numSize2, int *inputSize
                     negNum = 1;
                     signs++;
                 }
+            } else if(input[i] == '-' && charType(input, i+1) == ALPHA) {
+                currCharArr[charCount++] = '+';
+                currCharArr[charCount++] = '$';
+                currCharArr[charCount++] = '*';
+                currNumArr[numCount++] = -1;
+                signs--;
             } else if(brackNum == 0 && negNum == 0 && ( (i!=0 && input[i-1] != '=') || charType(input, i+1) != ALPHA ) ) {
                 currCharArr[charCount] = input[i];
                 charCount++;
             }
         } else if(currState == OPEN_BRACKET) {
-            if( (i != 0 && input[i-1] != '=') && charType(input, i-1) != OPERATION) {
-                currCharArr[charCount] = '*';
-                charCount++;
-            }
+            signs++;
         } else if(currState == EQUAL_SIGN) {
             currCharArr[charCount] = '=';
             charCount++;
         } else if(currState == EXPONENT) {
             currCharArr[charCount] = '^';
             charCount++;
+        } else if(currState == CLOSED_BRACKET) {
+            if(i!=(size-1) && charType(input, i+1) != OPERATION && input[i+1] != '=') {
+                currCharArr[charCount++] = '*';
+            }
         }
         if(currState == NUM && (i == (size - 1) || charType(input, i+1) != NUM)) {
             currCharArr[charCount] = '$';
@@ -282,19 +297,24 @@ void printArr(int numSize1, int numSize2, int inputSize1, int inputSize2, double
     }
     printf("right char ends\n");
 }
-void simplify(int *inputSize1, int *inputSize2, int *numSize1, int *numSize2, double *leftNumArr, double *rightNumArr,
+int simplify(int *inputSize1, int *inputSize2, int *numSize1, int *numSize2, double *leftNumArr, double *rightNumArr,
               char *leftCharArr, char *rightCharArr, int start) {
     if(start == 0) {
         for(int i = 0; i < OPER_NUM; i++) {
-            operate(operations[i][0], leftNumArr, leftCharArr, inputSize1, numSize1, 1);
-            operate(operations[i][0], rightNumArr, rightCharArr, inputSize2, numSize2, 1); 
+            if(operate(operations[i][0], leftNumArr, leftCharArr, inputSize1, numSize1, 1) == 1 ||
+            operate(operations[i][0], rightNumArr, rightCharArr, inputSize2, numSize2, 1) == 1) {
+                return 1;
+            }
         }  
     } else {
         for(int i = OPER_NUM-1; i >= 0; i--) {
-            operate(operations[i][0], leftNumArr, leftCharArr, inputSize1, numSize1, -1);
-            operate(operations[i][0], rightNumArr, rightCharArr, inputSize2, numSize2, -1); 
+            if(operate(operations[i][0], leftNumArr, leftCharArr, inputSize1, numSize1, -1) == 1 ||
+            operate(operations[i][0], rightNumArr, rightCharArr, inputSize2, numSize2, -1) == 1) {
+                return 1;
+            }
         }
     }
+    return 0;
 }
 
 void addElement(double *numArr, char *charArr, int *size, double nElement, char cElement) {
@@ -415,27 +435,22 @@ int solve(char var, int *inputSize1, int *inputSize2, int *numSize1, int *numSiz
             if(move(leftNumArr, rightNumArr, leftCharArr, rightCharArr, numSize1, numSize2, inputSize1, inputSize2,
                  var, operations[i][0], operations[i][1]) == 1) {
                leftRight = !leftRight;
+               if(simplify(inputSize1, inputSize2, numSize1, numSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr, 4) == 1) {
+                   return 2;
+               }
                i = (OPER_NUM-1);
             }
         } else {
             if(move(rightNumArr, leftNumArr, rightCharArr, leftCharArr, numSize2, numSize1, inputSize2, inputSize1,
                  var, operations[i][0], operations[i][1]) == 1) {
               leftRight = !leftRight;
+              if(simplify(inputSize1, inputSize2, numSize1, numSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr, 4) == 1) {
+                  return 2;
+              }
               i = (OPER_NUM-1);
             }
         }
-        //move(numArr, oNumArr, charArr, oCharArr, numSize, oNumSize, inputSize, oInputSize, var, operations[i][0], operations[i][1]);
     }
-    /*int index = findNextNum(-1, (*numSize), numArr), opposite = '-';
-    if(numArr[index] < 0) {
-        opposite = '+';
-    }
-    if(index != -1) {
-        addElement(oNumArr, NULL, oNumSize, numArr[index]*(-1), 0);
-        numArr[index] = 0;
-        addElement(NULL, oCharArr, oInputSize, 0, opposite);
-        addElement(NULL, oCharArr, oInputSize, 0, '$');
-    }*/
     return leftRight;
 }
 
@@ -445,9 +460,9 @@ void displayResult(int inputSize, int numSize, double *numArr, char *charArr, ch
     for(int i = 0; i < inputSize; i++) {
         if(charArr[i] == '$') {
             numCount++;
-            if(numArr[numCount] != 0) {
+            //if(numArr[numCount] != 0) {
                 printf("%.2lf ", numArr[numCount]);
-            }
+            //}
         } else if (charArr[i] != '@') {
             printf("%c ", charArr[i]);
         }
@@ -509,7 +524,7 @@ void shiftArray(char *input1, double *input2, int *inputSize, int index, int nEl
         printf("inputSize = %d\n", (*inputSize));
     }
 }
-// returns 1 if error found in equation, 0 if not
+// returns 1 if error found in equation, 0 if not, 2 if user wishes to stop
 /* error checking for:
  * - spaces in equation (equation is adjusted)
  * - if var is valid
@@ -521,6 +536,9 @@ void shiftArray(char *input1, double *input2, int *inputSize, int index, int nEl
  * - cannot have empty input or input with only spaces
  */
 int errorCheck(char *input, int *inputSize, char var) {
+    if(var == '=' && (strcmp(input, "stop\n") == 0 || strcmp(input, "Stop\n") == 0)) {
+        return 2;
+    }
     int size = (*inputSize), varFound = 0;
     for(int i = 0; i < size; i++) {
         if(var == '=') {
@@ -561,21 +579,57 @@ int errorCheck(char *input, int *inputSize, char var) {
     return 0;
 }
 
+void noVarEq(char *rightCharArr, char *leftCharArr, double *leftNumArr, double *rightNumArr) {
+    if(leftNumArr[0] == rightNumArr[0]){
+        printf("True\n");
+    } else {
+        printf("False\n");
+    }
+}
+
+// returns 1 if not solvable
+int notSolvable(double num1, char oType, double num2) {
+    if(oType == '/') {
+        if(num2 == 0) {
+            if(DEBUG == 1) printf("Cannot divide by 0\n");
+            return 1;
+        }
+    } else if(oType == '^') {
+        int exp = (1/num2);
+        if( (exp % 2 == 0) && num1 < 0 ) {
+            if(DEBUG == 1) printf("Cannot do (%lf.2)^(%lf.2)\n", num1, num2);
+            return 1;
+        }
+    }
+    return 0;
+}
+
 int main(void) {
-    //while(1) {
-        char input[INPUT_MAX], leftCharArr[INPUT_MAX], rightCharArr[INPUT_MAX], var;
+    while(1) {
+        char input[INPUT_MAX], leftCharArr[INPUT_MAX], rightCharArr[INPUT_MAX], var, varCount = 0;
         int inputSize1 = 0, inputSize2 = 0, numSize1 = 0, numSize2 = 0, done = 0, cType,
-            leftRight; 
+            leftRight, result, notSolvable; 
         double leftNumArr[INPUT_MAX], rightNumArr[INPUT_MAX];
         do {
-            printf("Please input your equation (only use +, -, *, /) with only one letter and no decimals: ");
+            printf("Please input your equation with only one letter max and no decimals, and input 'stop' to end: ");
             fgets(input, INPUT_MAX, stdin);
             inputSize1 = strlen(input) - 1;
-        }while(errorCheck(input, &inputSize1, '=') == 1);
-        do {
-            printf("What variable would you like to isolate? (case-sensitive): ");
-            scanf("\n%c", &var);
-        }while(errorCheck(input, &inputSize1, var) == 1);
+            result = errorCheck(input, &inputSize1, '=');
+            if(result == 2) return 0;
+        }while(result == 1);
+        for(int i = 0; i < inputSize1; i++) {
+            if(charType(input, i) == ALPHA) {
+                varCount++;
+                var = input[i];
+            }
+            if(varCount > 1) break;
+        }
+        if(varCount > 1) {
+            do {
+                printf("What variable would you like to isolate? (case-sensitive): ");
+                scanf("\n%c", &var);
+            }while(errorCheck(input, &inputSize1, var) == 1);
+        }
         
         if(DEBUG == 1) printf("\nINPUTSIZE: %d\n", inputSize1);
         for(int i = 0; i < inputSize1; i++) {
@@ -593,35 +647,49 @@ int main(void) {
         inputSize1 = inputSize1 - inputSize2 - 1;
         if(DEBUG == 1) printf("\n\nsize1 = %d, size2 = %d:\n", inputSize1, inputSize2);
         //printf("size: %d, num: %d\n", inputSize, numSize);
-        //printf("nEqualPlace: %d\n", nEqualPlace);
         convert(input, &numSize1, &numSize2, &inputSize1, &inputSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr);
-         //debugging---------------------------------------------
-        /*for(int i = 0; i < (inputSize1+inputSize2); i++) {
-            printf("%c\n", input[i]);
-        }*/
-        //--------------------------------------------------------
         if(DEBUG == 1) printArr(numSize1, numSize2, inputSize1, inputSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr);
-        simplify(&inputSize1, &inputSize2, &numSize1, &numSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr, 0);
+        notSolvable = simplify(&inputSize1, &inputSize2, &numSize1, &numSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr, 0);
         if(DEBUG == 1) printf("\nafter simplifying:\n");
         if(DEBUG == 1) printArr(numSize1, numSize2, inputSize1, inputSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr);
-        leftRight = solve(var, &inputSize1, &inputSize2, &numSize1, &numSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr);
-        if(DEBUG == 1) printf("\nafter solving:\n");
-        if(DEBUG == 1) printArr(numSize1, numSize2, inputSize1, inputSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr);
-        if(DEBUG == 1) printf("\n\nsize1 = %d, size2 = %d:\n", inputSize1, inputSize2);
-        simplify(&inputSize1, &inputSize2, &numSize1, &numSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr, 4);
-        if(DEBUG == 1) printf("\nafter again:\n");
-        if(DEBUG == 1) printArr(numSize1, numSize2, inputSize1, inputSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr);
-        double *numArr = leftNumArr;
-        int inputSize = inputSize1, numSize = numSize1;
-        char *charArr = leftCharArr;
-        if(leftRight == 0) {
-            numArr = rightNumArr;
-            charArr = rightCharArr;
-            numSize = numSize2;
-            inputSize = inputSize2;
+        if(varCount == 0 && notSolvable == 0) {
+            noVarEq(rightCharArr, leftCharArr, leftNumArr, rightNumArr);
+        } else if(notSolvable == 0) {
+            leftRight = solve(var, &inputSize1, &inputSize2, &numSize1, &numSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr);
+            if(leftRight == 2) notSolvable = 1;
+            if(DEBUG == 1) printf("\nafter solving:\n");
+            if(DEBUG == 1) printArr(numSize1, numSize2, inputSize1, inputSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr);
+            if(DEBUG == 1) printf("\n\nsize1 = %d, size2 = %d:\n", inputSize1, inputSize2);
+            if(notSolvable == 0) notSolvable = simplify(&inputSize1, &inputSize2, &numSize1, &numSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr, 4);
+            if(DEBUG == 1) printf("\nafter again:\n");
+            if(DEBUG == 1) printArr(numSize1, numSize2, inputSize1, inputSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr);
         }
-        displayResult(inputSize, numSize, numArr, charArr, var);
-    //}
+        if(notSolvable == 1) {
+            printf("This is not solvable.\n");
+        } else if(varCount != 0) {
+            double *numArr = leftNumArr;
+            int inputSize = inputSize1, numSize = numSize1;
+            char *charArr = leftCharArr;
+            if(leftRight == 0) {
+                numArr = rightNumArr;
+                charArr = rightCharArr;
+                numSize = numSize2;
+                inputSize = inputSize2;
+            }
+            displayResult(inputSize, numSize, numArr, charArr, var);
+        }
+        memset(input, 0, sizeof(input));
+        memset(leftCharArr, 0, sizeof(leftCharArr));
+        memset(rightCharArr, 0, sizeof(rightCharArr));
+        memset(leftNumArr, 0, sizeof(leftNumArr));
+        memset(rightNumArr, 0, sizeof(rightNumArr));
+        inputSize1 = 0;
+        inputSize2 = 0;
+        numSize1 = 0;
+        numSize2 = 0;
+        done = 0;
+        varCount = 0;
+    }
     return 0;
 }
 

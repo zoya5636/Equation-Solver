@@ -8,10 +8,9 @@
 int charType(char equation[INPUT_MAX], int index);
 void convert(char input[INPUT_MAX], int *numSize1, int *numSize2, int *inputSize1, int *inputSize2, 
              double *numAr1, double *numAr2, char *cAr1, char *cAr2);
-int operate(char oType, double *numArr, char *charArr, int *inputSize, int *numSize, int order);
+int operate(char oType, double *numArr, char *charArr, int *inputSize, int *numSize, int order, int start, int end, int numCount);
 int simplify(int *inputSize1, int *inputSize2, int *numSize1, int *numSize2, double *leftNumArr, double *rightNumArr,
-              char *leftCharArr, char *rightCharArr, int start);
-int findNextNum(int numCount, int numSize, double *numArr);
+              char *leftCharArr, char *rightCharArr, int start, int arrStart, int arrEnd, int numCount);
 int move(double *numArr, double *oNumArr, char *charArr, char *oCharArr, int *numSize, int *oNumSize,
           int *inputSize, int *oInputSize, char var, char oType, char opposite);
 int solve(char var, int *inputSize1, int *inputSize2, int *numSize1, int *numSize2, double *leftNumArr, double *rightNumArr,
@@ -21,6 +20,8 @@ int errorCheck(char *input, int *inputSize, char var);
 int numInChar(char *arr, int index, int inputSize);
 void shiftArray(char *input1, double *input2, int *inputSize, int index, int a, char b);
 int notSolvable(double num1, char oType, double num2);
+void bracketSolve(double *numArr, char *charArr, int *numSize, int *inputSize, int openB, int closedB, int numCount, int leftRight);
+void bracketSolve2(double *numArr, char *charArr, int *numSize, int *inputSize, int leftRight);
 
 const int ALPHA = 1;
 const int NUM = 2;
@@ -41,16 +42,6 @@ char operations[OPER_NUM][2] = {
     {'-', '+'}
 };
 
-// -1 means nothing found
-int findNextNum(int numCount, int numSize, double *numArr) {
-    for(int i = (numCount+1); i < numSize; i++) {
-        if(numArr[i] != 0) {
-            return i;
-        }
-    }
-    return -1;
-}
-
 int numInChar(char *arr, int index, int inputSize) {
     int count = -1;
     for(int i = 0; i < inputSize; i++) {
@@ -65,17 +56,11 @@ int numInChar(char *arr, int index, int inputSize) {
 // returns 1 if valid
 int elementInArr(char oType, char *arr, int index) {
     int end;
-    /*{'^', '^'},
-    {'/', '*'},
-    {'*', '/'},
-    {'+', '-'},
-    {'-', '+'}*/
     if(oType == '^') return 1;
     else if(oType == '/' || oType == '*') end = 1;
     else if(oType == '-' || oType == '+') end = 3;
     for(int i = 0; i < end; i++) {
         if(arr[index] == operations[i][0]) return 0;
-        if(DEBUG == 1) printf("&&&&&&&&&&&&&&&&&&&&     ARR[INDEX] = %d, OPERATIONS[I] = %d\n", arr[index], operations[i][0]);
     }
     return 1;
 }
@@ -87,11 +72,15 @@ int validOperation(char *arr, int index1, int index2, int inputSize, char oType,
        if(oType != '^' && (arr[cIndex1-1] == '^' || arr[cIndex1+1] == '^' || arr[cIndex2-1] == '^' || arr[cIndex2+1] == '^')) return -1;
    }
    if(cIndex1 == -1 || cIndex2 == -1) return -1;
-   for(int i = (cIndex1+1); i < cIndex2; i++) {
+   /*for(int i = (cIndex1+1); i < cIndex2; i++) {
        if(arr[i] != '@' && arr[i] != oType) return -1;
-   }
+   }*/
+   //x = 2+3*a
    if(order == 1) {
-       for(int i = (cIndex1+1); i > cIndex2; i--) {
+       if((elementInArr(oType, arr, cIndex1-1) == 0) && found == 0) return -1;
+       if((elementInArr(oType, arr, cIndex2+1) == 0) && found == 0) return -1;
+       
+       /*for(int i = (cIndex1+1); i > cIndex2; i--) {
            if(arr[i] == '$') found = 1;
            if((elementInArr(oType, arr, i) == 0) && found == 0) return -1;
        }
@@ -99,53 +88,55 @@ int validOperation(char *arr, int index1, int index2, int inputSize, char oType,
        for(int i = (cIndex2+1); i < inputSize; i++) {
            if(arr[i] == '$') found = 1;
            if((elementInArr(oType, arr, i) == 0) && found == 0) return -1;
-       }
+       }*/
    }
    return 1;
 }
 
-//$ + a + $
-
-int operate(char oType, double *numArr, char *charArr, int *inputSize, int *numSize, int order) {
-    int numCount = -1, size = (*inputSize);
+int operate(char oType, double *numArr, char *charArr, int *inputSize, int *numSize, int order, int start, int end, int numCount) {
+    int oldNumCount;
+    int wholeArr = 0;
+    if(end == -1) {
+        start = 0;
+        end = (*inputSize) - 1;
+        numCount = -1;
+        wholeArr = 1;
+    } else {
+        oldNumCount = numCount;
+    }
     double result;
-    for(int i = 0; i < size; i++) {
+    for(int i = start; i < end; i++) {
         if(charArr[i] == '$') numCount++;
-        if(numCount == (*numSize)) return 0;
+        if(numCount == ((*numSize)-1)) return 0;
         if(charArr[i] == oType && numCount != -1) {
-            //int index = findNextNum(numCount, (*numSize), numArr);
             int index = numCount+1;
-            if(index != (*numSize)) {
-                int cIndex1 = numInChar(charArr, index, *inputSize);
-                int cIndex2 = numInChar(charArr, numCount, *inputSize);
-                int valid = validOperation(charArr, numCount, index, (*inputSize), oType, order);
-                if(valid != -1) {
-                    if(notSolvable(numArr[numCount], oType, numArr[index]) == 1) return 1;
-                    if(oType == '+') {
-                       result = numArr[numCount] + numArr[index];
-                    } else if(oType == '-') {
-                        result = numArr[numCount] - numArr[index];
-                    } else if(oType == '*') {
-                        result = numArr[numCount] * numArr[index];
-                    } else if(oType == '/') {
-                        result = numArr[numCount] / numArr[index];
-                    } else if(oType == '^' && charArr[i-1] == '$' && charArr[i+1] == '$') {
-                        result = pow(numArr[numCount], numArr[index]);
-                    }
-                    shiftArray(charArr, NULL, inputSize, i, 0, 0);
-                    shiftArray(charArr, NULL, inputSize, cIndex1-1, 0, 0);
-                    numArr[index] = result;
-                    shiftArray(NULL, numArr, numSize, numCount, 0, 0);
-                    i = 0; // new
-                    numCount = 0;
+            int cIndex1 = numInChar(charArr, index, *inputSize);
+            int valid = validOperation(charArr, numCount, index, (*inputSize), oType, order);
+            if(valid != -1) {
+                if(notSolvable(numArr[numCount], oType, numArr[index]) == 1) return 1;
+                if(oType == '+') {
+                   result = numArr[numCount] + numArr[index];
+                } else if(oType == '-') {
+                    result = numArr[numCount] - numArr[index];
+                } else if(oType == '*') {
+                    result = numArr[numCount] * numArr[index];
+                } else if(oType == '/') {
+                    result = numArr[numCount] / numArr[index];
+                } else if(oType == '^' && charArr[i-1] == '$' && charArr[i+1] == '$') {
+                    result = pow(numArr[numCount], numArr[index]);
+                }
+                shiftArray(charArr, NULL, inputSize, i, 0, 0);
+                shiftArray(charArr, NULL, inputSize, cIndex1-1, 0, 0);
+                numArr[index] = result;
+                shiftArray(NULL, numArr, numSize, numCount, 0, 0);
+                i = start;
+                if(wholeArr == 0) {
+                    end = end - 2; // fix
+                    numCount = oldNumCount;
+                } else {
+                    numCount = -1;
                 }
             }
-            
-            /*charArr[i] = '@';
-            charArr[cIndex1-1] = '@';
-            numArr[index] = result;
-            numArr[numCount] = 0;*/
-            //numCount = index;
         }
     }
     return 0;
@@ -175,6 +166,20 @@ int charType(char equation[INPUT_MAX], int index) {
 void updateVars(int numCount, int *inputSize, int *numSize, int signs) {
     (*inputSize) = (*inputSize) - ((*numSize) - numCount) - signs;
     (*numSize) = numCount;
+}
+
+// returns 1 if num, 0 if not
+int numOrNot(char input[INPUT_MAX], int bIndex) {
+    int found = 0;
+    for(int i = (bIndex+1); i < (INPUT_MAX-bIndex-1); i++) {
+        if(charType(input, i) == CLOSED_BRACKET) {
+            found = 1;
+            break;
+        } else if(charType(input, i) != NUM && found == 0) {
+            return 0;
+        }
+    }
+    return 1;
 }
 
 void convert(char input[INPUT_MAX], int *numSize1, int *numSize2, int *inputSize1, int *inputSize2, double *leftNumArr,
@@ -217,8 +222,7 @@ void convert(char input[INPUT_MAX], int *numSize1, int *numSize2, int *inputSize
         currState = charType(input, i);
         if(currState == ALPHA) {
             if(i != 0 && charType(input, i-1) == NUM) {
-                currCharArr[charCount] = '*';
-                charCount++;
+                currCharArr[charCount++] = '*';
                 (*currSize)++;
             }
             currCharArr[charCount] = input[i];
@@ -244,28 +248,35 @@ void convert(char input[INPUT_MAX], int *numSize1, int *numSize2, int *inputSize
                 currNumArr[numCount++] = -1;
                 signs--;
             } else if(brackNum == 0 && negNum == 0 && ( (i!=0 && input[i-1] != '=') || charType(input, i+1) != ALPHA ) ) {
-                currCharArr[charCount] = input[i];
-                charCount++;
+                currCharArr[charCount++] = input[i];
             }
         } else if(currState == OPEN_BRACKET) {
-            signs++;
-        } else if(currState == EQUAL_SIGN) {
-            currCharArr[charCount] = '=';
-            charCount++;
-        } else if(currState == EXPONENT) {
-            currCharArr[charCount] = '^';
-            charCount++;
-        } else if(currState == CLOSED_BRACKET) {
-            if(i!=(size-1) && charType(input, i+1) != OPERATION && input[i+1] != '=') {
+            if(numOrNot(input, i) == 0) {
+                currCharArr[charCount++] = '(';
+            } else if(charType(input, i-1) == NUM) {
                 currCharArr[charCount++] = '*';
+            } else {
+                signs++;
+            }
+        } else if(currState == EQUAL_SIGN) {
+            currCharArr[charCount++] = '=';
+        } else if(currState == EXPONENT) {
+            currCharArr[charCount++] = '^';
+        } else if(currState == CLOSED_BRACKET) {
+            if(charType(input, i-2) == OPEN_BRACKET) {
+                if(charType(input, i+1) == OPEN_BRACKET || charType(input, i+1) == NUM) {
+                    currCharArr[charCount++] = '*';
+                } else {
+                    signs++;
+                }
+            } else {
+                currCharArr[charCount++] = ')';
             }
         }
         if(currState == NUM && (i == (size - 1) || charType(input, i+1) != NUM)) {
-            currCharArr[charCount] = '$';
-            charCount++;
+            currCharArr[charCount++] = '$';
             if(negNum == 1) currNum *= -1;
-            currNumArr[numCount] = currNum;
-            numCount++;
+            currNumArr[numCount++] = currNum;
             currNum = -1;
             negNum = 0;
             brackNum = 0;
@@ -298,19 +309,19 @@ void printArr(int numSize1, int numSize2, int inputSize1, int inputSize2, double
     printf("right char ends\n");
 }
 int simplify(int *inputSize1, int *inputSize2, int *numSize1, int *numSize2, double *leftNumArr, double *rightNumArr,
-              char *leftCharArr, char *rightCharArr, int start) {
+              char *leftCharArr, char *rightCharArr, int start, int arrStart, int arrEnd, int numCount) {
     if(start == 0) {
         for(int i = 0; i < OPER_NUM; i++) {
-            if(operate(operations[i][0], leftNumArr, leftCharArr, inputSize1, numSize1, 1) == 1 ||
-            operate(operations[i][0], rightNumArr, rightCharArr, inputSize2, numSize2, 1) == 1) {
-                return 1;
+            if(operate(operations[i][0], leftNumArr, leftCharArr, inputSize1, numSize1, 1, arrStart, arrEnd, numCount) == 1 ||
+            ((rightNumArr == NULL) || operate(operations[i][0], rightNumArr, rightCharArr, inputSize2, numSize2, 1, arrStart, arrEnd, numCount) == 1)) {
+                if(rightNumArr != NULL) return 1;
             }
         }  
     } else {
         for(int i = OPER_NUM-1; i >= 0; i--) {
-            if(operate(operations[i][0], leftNumArr, leftCharArr, inputSize1, numSize1, -1) == 1 ||
-            operate(operations[i][0], rightNumArr, rightCharArr, inputSize2, numSize2, -1) == 1) {
-                return 1;
+            if(operate(operations[i][0], leftNumArr, leftCharArr, inputSize1, numSize1, -1, arrStart, arrEnd, numCount) == 1 ||
+            ((rightNumArr == NULL) || operate(operations[i][0], rightNumArr, rightCharArr, inputSize2, numSize2, -1, arrStart, arrEnd, numCount) == 1)) {
+                if(rightNumArr != NULL) return 1;
             }
         }
     }
@@ -360,7 +371,6 @@ int move(double *numArr, double *oNumArr, char *charArr, char *oCharArr, int *nu
             shiftArray(charArr, NULL, inputSize, 0, 0, '*');
             shiftArray(charArr, NULL, inputSize, 0, 0, '$');
             if(DEBUG == 1) {
-                printf("MADE IT ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n");
                 printArr(*numSize, *oNumSize, *inputSize, *oInputSize, numArr, oNumArr, charArr, oCharArr);
             }
         }
@@ -402,9 +412,7 @@ int move(double *numArr, double *oNumArr, char *charArr, char *oCharArr, int *nu
             } else if(oType == '^' && charArr[i] == '$') {
                 shiftArray(charArr, NULL, inputSize, i, 0, 0);
                 double num = numArr[numCount];
-                if(DEBUG == 1) printf("---------------------%lf, %lf\n", 1.0 / num, num);
                 moveNum = (1.0 / num);
-                if(DEBUG == 1) printf("!!!!!!!!!!!!!!!!!!!!!!!!1moveNum = %lf\n", moveNum);
                 shiftArray(NULL, numArr, numSize, numCount, 0, 0);
                 addElement(oNumArr, NULL, oNumSize, moveNum, 0);
                 addElement(NULL, oCharArr, oInputSize, 0, opposite);
@@ -416,10 +424,6 @@ int move(double *numArr, double *oNumArr, char *charArr, char *oCharArr, int *nu
     if(DEBUG == 1) printArr(*numSize, *oNumSize, *inputSize, *oInputSize, numArr, oNumArr, charArr, oCharArr);
     return 0;
 }
-// 5-a=10
-/*
- * what if var doesn't exist?
- */
 
 
 int solve(char var, int *inputSize1, int *inputSize2, int *numSize1, int *numSize2, double *leftNumArr, double *rightNumArr,
@@ -435,7 +439,7 @@ int solve(char var, int *inputSize1, int *inputSize2, int *numSize1, int *numSiz
             if(move(leftNumArr, rightNumArr, leftCharArr, rightCharArr, numSize1, numSize2, inputSize1, inputSize2,
                  var, operations[i][0], operations[i][1]) == 1) {
                leftRight = !leftRight;
-               if(simplify(inputSize1, inputSize2, numSize1, numSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr, 4) == 1) {
+               if(simplify(inputSize1, inputSize2, numSize1, numSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr, 4, -1, -1, -1) == 1) {
                    return 2;
                }
                i = (OPER_NUM-1);
@@ -444,7 +448,7 @@ int solve(char var, int *inputSize1, int *inputSize2, int *numSize1, int *numSiz
             if(move(rightNumArr, leftNumArr, rightCharArr, leftCharArr, numSize2, numSize1, inputSize2, inputSize1,
                  var, operations[i][0], operations[i][1]) == 1) {
               leftRight = !leftRight;
-              if(simplify(inputSize1, inputSize2, numSize1, numSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr, 4) == 1) {
+              if(simplify(inputSize1, inputSize2, numSize1, numSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr, 4, -1, -1, -1) == 1) {
                   return 2;
               }
               i = (OPER_NUM-1);
@@ -459,10 +463,7 @@ void displayResult(int inputSize, int numSize, double *numArr, char *charArr, ch
     printf("%c = ", var);
     for(int i = 0; i < inputSize; i++) {
         if(charArr[i] == '$') {
-            numCount++;
-            //if(numArr[numCount] != 0) {
-                printf("%.2lf ", numArr[numCount]);
-            //}
+            printf("%.2lf ", numArr[++numCount]);
         } else if (charArr[i] != '@') {
             printf("%c ", charArr[i]);
         }
@@ -596,12 +597,43 @@ int notSolvable(double num1, char oType, double num2) {
         }
     } else if(oType == '^') {
         int exp = (1/num2);
-        if( (exp % 2 == 0) && num1 < 0 ) {
+        if( (exp > 1) && (exp % 2 == 0) && num1 < 0 ) {
             if(DEBUG == 1) printf("Cannot do (%lf.2)^(%lf.2)\n", num1, num2);
             return 1;
         }
     }
     return 0;
+}
+
+void bracketSolve2(double *numArr, char *charArr, int *numSize, int *inputSize, int leftRight) {
+    int numCount = -1;
+    for(int i = 0; i < (*inputSize); i++) {
+        if(charType(charArr, i) == OPEN_BRACKET) {
+            bracketSolve(numArr, charArr, numSize, inputSize, i, -1, numCount, leftRight);
+            numCount++;
+        } else if(charArr[i] == '$') numCount++;
+    }
+}
+
+void bracketSolve(double *numArr, char *charArr, int *numSize, int *inputSize, int openB, int closedB, int numCount, int leftRight) {
+    int newNumCount = 0;
+    for(int i = (openB + 1); i < (*inputSize); i++) {
+        if(charType(charArr, i) == OPEN_BRACKET) {
+            bracketSolve(numArr, charArr, numSize, inputSize, i, closedB, numCount+newNumCount, leftRight);
+        }
+        if(charType(charArr, i) == CLOSED_BRACKET) {
+            closedB = i;
+            if(leftRight == 0) {
+                simplify(inputSize, NULL, numSize, NULL, numArr, NULL, charArr, NULL, 0, openB+1, closedB, numCount);
+            } else {
+                simplify(NULL, inputSize, NULL, numSize, NULL, numArr, NULL, charArr, 0, openB+1, closedB, numCount);
+            }
+            shiftArray(charArr, NULL, inputSize, openB, 0, 0);
+            shiftArray(charArr, NULL, inputSize, openB+1, 0, 0);
+            return;
+        }
+        if(charArr[i] == '$') newNumCount++;
+    }
 }
 
 int main(void) {
@@ -630,7 +662,6 @@ int main(void) {
                 scanf("\n%c", &var);
             }while(errorCheck(input, &inputSize1, var) == 1);
         }
-        
         if(DEBUG == 1) printf("\nINPUTSIZE: %d\n", inputSize1);
         for(int i = 0; i < inputSize1; i++) {
             cType = charType(input, i);
@@ -646,10 +677,20 @@ int main(void) {
         }
         inputSize1 = inputSize1 - inputSize2 - 1;
         if(DEBUG == 1) printf("\n\nsize1 = %d, size2 = %d:\n", inputSize1, inputSize2);
-        //printf("size: %d, num: %d\n", inputSize, numSize);
         convert(input, &numSize1, &numSize2, &inputSize1, &inputSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr);
         if(DEBUG == 1) printArr(numSize1, numSize2, inputSize1, inputSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr);
-        notSolvable = simplify(&inputSize1, &inputSize2, &numSize1, &numSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr, 0);
+        
+        bracketSolve2(leftNumArr, leftCharArr, &numSize1, &inputSize1, 0);
+        //bracketSolve(leftNumArr, leftCharArr, &numSize1, &inputSize1, -1, -1, -1, 0);
+        if(DEBUG == 1) printf("After bracket solve left:\n");
+        if(DEBUG == 1) printArr(numSize1, numSize2, inputSize1, inputSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr);
+        bracketSolve2(rightNumArr, rightCharArr, &numSize2, &inputSize2, 1);
+        //bracketSolve(rightNumArr, rightCharArr, &numSize2, &inputSize2, -1, -1, -1, 1);
+        if(DEBUG == 1) printf("After bracket solve right:\n");
+        if(DEBUG == 1) printArr(numSize1, numSize2, inputSize1, inputSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr);
+        
+        
+        notSolvable = simplify(&inputSize1, &inputSize2, &numSize1, &numSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr, 0, -1, -1, -1);
         if(DEBUG == 1) printf("\nafter simplifying:\n");
         if(DEBUG == 1) printArr(numSize1, numSize2, inputSize1, inputSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr);
         if(varCount == 0 && notSolvable == 0) {
@@ -660,7 +701,7 @@ int main(void) {
             if(DEBUG == 1) printf("\nafter solving:\n");
             if(DEBUG == 1) printArr(numSize1, numSize2, inputSize1, inputSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr);
             if(DEBUG == 1) printf("\n\nsize1 = %d, size2 = %d:\n", inputSize1, inputSize2);
-            if(notSolvable == 0) notSolvable = simplify(&inputSize1, &inputSize2, &numSize1, &numSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr, 4);
+            if(notSolvable == 0) notSolvable = simplify(&inputSize1, &inputSize2, &numSize1, &numSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr, 4, -1, -1, -1);
             if(DEBUG == 1) printf("\nafter again:\n");
             if(DEBUG == 1) printArr(numSize1, numSize2, inputSize1, inputSize2, leftNumArr, rightNumArr, leftCharArr, rightCharArr);
         }
